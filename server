@@ -1,0 +1,210 @@
+#!/bin/sh
+exec scala -savecompiled "$0" $@
+!#
+/*
+ * Тестовая задача на Scala
+ * 
+ * Минимальный http сервер, который показывает баннеры и статистику показов баннеров
+ * 
+ */
+  import java.io.BufferedReader;
+  import java.io.InputStreamReader;
+  import java.io.PrintWriter
+  import java.net.ServerSocket
+  import java.net.Socket
+  import scala.actors.Actor
+  
+  case class BannerViewMessage( bannerId : String )
+  case class Statistics( count1 : Int, count2 : Int, count3 : Int )
+    
+  class StatisticsActor extends Actor{
+    def act(){
+      var banner1 : Int = 0
+      var banner2 : Int = 0
+      var banner3 : Int = 0      
+      while( true ){
+	receive{
+	  case BannerViewMessage( bannerId ) => { 
+	    if( bannerId == "1" ){
+	      banner1 += 1 
+	      System.out.println( "BannerViewMessage: id = " + bannerId + ", view = " + banner1 )
+	    }
+	    if( bannerId == "2" ){
+	      banner2 += 1 
+	      System.out.println( "BannerViewMessage: id = " + bannerId + ", view = " + banner2 )
+	    }
+	    if( bannerId == "3" ){
+	      banner3 += 1
+	      System.out.println( "BannerViewMessage: id = " + bannerId + ", view = " + banner3 )
+	    }	    
+	  }
+	  case Statistics( count1, count2, count3 ) => sender ! Statistics( banner1, banner2, banner3 )
+	  case _ => {}
+	}
+      }
+    }
+  }
+  
+  class Request( val raw : String ){ 
+    var action : String = "not set"
+    var bannerId : String = "not set"
+    val r : Array[ String ] = getParameters( raw )
+
+    if( existParameters( r ) ){
+      action = extractAction( r )
+      if( isBanner( r ) ){
+	  bannerId = extractBannerId( r )
+      }
+    }
+    
+    def getParameters( raw : String ) : Array[ String ] = raw.split( "/" )       
+    def existParameters( r : Array[ String ] ) : Boolean = if( r.size > 0 ) true else false
+    def extractAction( r : Array[ String ] ) : String = r( 1 )
+    def isBanner( r : Array[ String ] ) : Boolean = if( ( r.size == 3 ) && ( extractAction( r ) == "banner" ) ) true else false
+    def extractBannerId( r : Array[ String ] ) : String = r( 2 )
+  }    
+  
+    class BannerPage( bannerId : String ){
+        val url = "http://localhost:8080/banner/" + bannerId
+	val template =
+	  <HTML>
+	    <HEAD>
+	      <TITLE>Banner id = {bannerId} </TITLE>
+	    </HEAD>
+	    <BODY LANG="en-US" BGCOLOR="#e6e6ff" DIR="LTR">
+	      <P>
+		<img src={url} />
+	      </P>
+	    </BODY>
+	  </HTML>.toString() 	
+	val body = template  + "\n\n" 	
+    }
+    
+    class StatisticsPage( count1 : Int, count2 : Int, count3 : Int ){
+      val template =
+	<HTML>
+	  <HEAD>
+	    <TITLE>Banner view statistics </TITLE>
+	  </HEAD>
+	  <BODY LANG="en-US" BGCOLOR="#e6e6ff" DIR="LTR">
+	    <P>
+		<table style="border-style: solid" border="1">
+		  <tr>
+		    <td>
+		      Banner id
+		    </td>
+		    <td>
+		      View count
+		    </td>
+		  </tr>		
+		  <tr>
+		    <td>
+		      1
+		    </td>
+		    <td>
+		      {count1}
+		    </td>
+		  </tr>
+		  <tr>
+		    <td>
+		      2
+		    </td>
+		    <td>
+		      {count2}
+		    </td>
+		  </tr>		
+		  <tr>
+		    <td>
+		      3
+		    </td>
+		    <td>
+		      {count3}
+		    </td>
+		  </tr>		  
+		</table>
+	    </P>
+	  </BODY>
+	</HTML>.toString()
+	val body = template
+    }
+    
+    class DefaultPage( rawRequest : String ){
+      val template =
+	<HTML>
+	  <HEAD>
+	    <TITLE>Scala minimal http server</TITLE>
+	  </HEAD>
+	  <BODY LANG="en-US" BGCOLOR="#e6e6ff" DIR="LTR">
+	    <p>Requests :
+		<p>/stats : view statistics</p>
+		<p>/banner/1 : view banner #1</p>
+		<p>/banner/banner_id : view banner #banner_id</p>
+	    </p>
+	  </BODY>
+	</HTML>.toString()   
+      val body = template
+    }  
+    
+    class RequestActor( socket : Socket, stat : StatisticsActor ) extends Actor{
+	var request = getRequest( socket )      
+	System.out.println( "RequestActor: request = " + request( 1 ) )
+	if( request( 1 ) != "/favicon.ico" ){
+	  var page: String = getPage( new Request( request( 1 ) ), stat )
+	  var writer = new PrintWriter( socket.getOutputStream(), true )
+	  outHttpHeaders( writer )
+	  writer.println( page );	  
+	}
+	socket.close()	  
+	this ! "exit"  	  	
+	    
+	def act(){	  
+	  while( true ){
+	    receive{
+	      case "exit" => { System.out.println( "request actor exit" ); exit() }
+	    }
+	  }
+	}	
+	def getPage( request : Request, stat : StatisticsActor ) : String = {
+	  var page : String = new DefaultPage( request.raw ).body
+	  if( request.action == "stats" ){
+	    val reply = stat !? Statistics( 0, 0, 0 )
+	    reply match{ 
+	      case Statistics( count1, count2, count3 ) => {
+		System.out.println( "reply: count1 = " + count1 + ", count2 = " + count2 + ", count3 = " + count3 )
+		page = new StatisticsPage( count1, count2, count3 ).body 
+	      }
+	    }
+	  }
+	  else if( request.action == "banner" ){
+	    stat ! BannerViewMessage( request.bannerId )
+	    page = new BannerPage( request.bannerId ).body
+	  }
+	  page
+	}
+	def getRequest( socket : Socket ) : Array[ String ] = {
+	    var in = new BufferedReader( new InputStreamReader( socket.getInputStream() ) )      
+	    var str : String = "." 
+	    str = in.readLine()
+	    var request = str.split( " " )   
+	    request
+	}	
+	def outHttpHeaders( writer : PrintWriter ){
+	  writer.println( "HTTP/1.0 200 OK" );
+	  writer.println( "Content-Type: text/html" );
+	  writer.println( "" );      
+	}    
+    }    
+ 
+  object HttpServer extends App{
+    val port = 8080
+    val listener = new ServerSocket( port )
+    printf( "Listening at port %1$d", port )
+  
+    val stat = new StatisticsActor()
+    stat.start()
+   
+    while( true ){
+      new RequestActor( listener.accept(), stat ).start()
+    } 
+  }
+  HttpServer.main( args )
