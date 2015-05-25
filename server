@@ -2,13 +2,12 @@
 exec scala -savecompiled "$0" $@
 !#
 /*
- * Тестовая задача на Scala
  * 
- * Минимальный http сервер, который показывает баннеры и статистику показов баннеров
+ * Минимальный http сервер, который показывает(как-бы) баннеры и статистику показов баннеров
  * 
  */
-  import java.io.BufferedReader;
-  import java.io.InputStreamReader;
+  import java.io.BufferedReader
+  import java.io.InputStreamReader
   import java.io.PrintWriter
   import java.net.ServerSocket
   import java.net.Socket
@@ -39,7 +38,6 @@ exec scala -savecompiled "$0" $@
 	    }	    
 	  }
 	  case Statistics( count1, count2, count3 ) => sender ! Statistics( banner1, banner2, banner3 )
-	  case _ => {}
 	}
       }
     }
