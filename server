@@ -3,7 +3,6 @@ exec scala -savecompiled "$0" $@
 !#
 /*
  * 
- * Минимальный http сервер, который показывает(как-бы) баннеры и статистику показов баннеров
  * Scala simple multi-threaded ( actors ) http server with banner view ( schematics )
  * 
  */
